@@ -1,6 +1,7 @@
 import os
 from functools import wraps
 from pathlib import Path
+from werkzeug.security import generate_password_hash, check_password_hash
 
 
 from flask import (
@@ -20,24 +21,24 @@ from sqlalchemy import create_engine
 
 basedir = Path(__file__).resolve().parent
 
-# # configuration
-# DATABASE = "flaskr.db"
+# configuration
+DATABASE = "flaskr.db"
 USERNAME = "admin"
 PASSWORD = "admin"
 SECRET_KEY = "change_me"
-# url = os.getenv("DATABASE_URL", f"sqlite:///{Path(basedir).joinpath(DATABASE)}")
+url = os.getenv("DATABASE_URL", f"sqlite:///{Path(basedir).joinpath(DATABASE)}")
 
-# if url.startswith("postgres://"):
-#     url = url.replace("postgres://", "postgresql://", 1)
-# SQLALCHEMY_DATABASE_URI = url
-# SQLALCHEMY_TRACK_MODIFICATIONS = False
+if url.startswith("postgres://"):
+    url = url.replace("postgres://", "postgresql://", 1)
+SQLALCHEMY_DATABASE_URI = url
+SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 # SERVER = "localhost"
 # DATABASE = "flaskr"
 # USERNAME = "flaskr-user"
 # PASSWORD = "asdf"
-SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://{os.environ['SQL_USERNAME']}:{os.environ['SQL_PASSWORD']}@{os.environ['SQL_SERVER']}:{os.environ['SQL_PORT']}/{os.environ['SQL_DATABASE']}"
-SQLALCHEMY_TRACK_MODIFICATIONS = False
+# SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://{os.environ['SQL_USERNAME']}:{os.environ['SQL_PASSWORD']}@{os.environ['SQL_SERVER']}:{os.environ['SQL_PORT']}/{os.environ['SQL_DATABASE']}"
+# SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 
 
@@ -68,6 +69,17 @@ def index():
     entries = db.session.query(models.Post)
     return render_template("index.html", entries=entries)
 
+@app.route("/change-password", methods=["GET", "POST"])
+@login_required
+def change_password_route():
+    """Allows users to change password AND salts and hashes the password in the DB."""
+    if request.method == "POST":
+        user = models.User.query.filter_by(username="admin").first()
+        user.password = generate_password_hash(request.form["password"])
+        db.session.commit()
+        flash("Password was successfully changed")
+        return redirect(url_for("index"))
+    return render_template("change-password.html")
 
 @app.route("/add", methods=["POST"])
 def add_entry():
@@ -86,9 +98,10 @@ def login():
     """User login/authentication/session management."""
     error = None
     if request.method == "POST":
-        if request.form["username"] != 'admin':
+        user = models.User.query.filter_by(username=request.form["username"]).first()
+        if user is None:
             error = "Invalid username"
-        elif request.form["password"] != 'admin':
+        elif not check_password_hash(user.password, request.form["password"]):
             error = "Invalid password"
         else:
             session["logged_in"] = True
